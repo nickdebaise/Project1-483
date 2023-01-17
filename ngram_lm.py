@@ -162,20 +162,20 @@ class NgramModelWithInterpolation(NgramModel):
                 else:
                     self.ngrams[str(gram)] = 1
 
-    def get_prob(self, context, char):
-        count = 0
+    def prob_for_ngram(self, context, char):
+        context_count = 0
 
         for ch in self.get_vocab():
             n = (context, ch)
             if self.ngrams.get(str(n)):
-                count += self.ngrams.get(str(n))
+                context_count += self.ngrams.get(str(n))
 
-        if count == 0:
+        if context_count == 0:
             return 1 / len(self.vocab)
         else:
             n = (context, char)
             # add-k smoothing
-            return (self.ngrams.get(str(n), 0) + self.k) / (count + (self.k * len(self.get_vocab())))
+            return (self.ngrams.get(str(n), 0) + self.k) / (context_count + (self.k * len(self.get_vocab())))
 
     def prob(self, context, char):
         """
@@ -185,24 +185,11 @@ class NgramModelWithInterpolation(NgramModel):
 
         for c in range(len(context) + 1):
             weight = self.weights[c]
-            p = self.get_prob(context[:c], char)
+
+            p = self.prob_for_ngram(context[c:], char)
 
             total_prob += weight * p
         return total_prob
-
-
-m = NgramModelWithInterpolation(1, 0)
-m.update('abab')
-
-print(m.prob('a', 'a'))
-print(m.prob('a', 'b'))
-
-# t = NgramModelWithInterpolation(2, 1)
-# t.update('abab')
-# t.update('abcd')
-#
-# print(t.prob('~a', 'b'))
-# print(t.prob('ba', 'b'))
 
 
 ################################################################################
@@ -243,3 +230,29 @@ def assert_equals(v1, v2, message):
 # assert_equals("['a', 'd', 'd', 'b', 'b', 'b', 'c', 'd', 'a', 'a', 'd', 'b', 'd', 'a', 'b', 'c', 'a', 'd', 'd', 'a', "
 #               "'a', 'c', 'd', 'b', 'a']", [m.random_char('') for i in range(25)], 'first 25 random characters same')
 # assert_equals("1.5157165665103982", m.perplexity('abcda'), 'perplexity same')
+
+# m = NgramModelWithInterpolation(1, 0)
+# m.update('abab')
+#
+# print(m.prob('a', 'a'))
+# print(m.prob('a', 'b'))
+#
+# t = NgramModelWithInterpolation(2, 1)
+# t.update('abab')
+# t.update('abcd')
+#
+# print(t.prob('~a', 'b'))
+# print(t.prob('ba', 'b'))
+# print(t.prob('~c', 'd'))
+# print(t.prob('bc', 'd'))
+
+
+def train_language_modal(path):
+    m = create_ngram_model(NgramModelWithInterpolation, path, 2, 1)
+    return m
+
+AF = train_language_modal("train/af.txt")
+
+with open("val/af.txt", encoding='utf-8', errors='ignore') as f:
+    for line in f:
+        print(line)
