@@ -149,6 +149,9 @@ class NgramModelWithInterpolation(NgramModel):
         super().__init__(c, k)
         self.weights = [1 / (self.c + 1) for _ in range(self.c + 1)]
 
+    def update_weights(self, new_weights):
+        self.weights = new_weights
+
     def update(self, text):
         for c in range(self.c + 1):
             grams = ngrams(c, text)
@@ -161,21 +164,6 @@ class NgramModelWithInterpolation(NgramModel):
                 else:
                     self.ngrams[str(gram)] = 1
 
-    def prob_for_ngram(self, context, char):
-        context_count = 0
-
-        for ch in self.get_vocab():
-            n = (context, ch)
-            if self.ngrams.get(str(n)):
-                context_count += self.ngrams.get(str(n))
-
-        if context_count == 0:
-            return 1 / len(self.vocab)
-        else:
-            n = (context, char)
-            # add-k smoothing
-            return (self.ngrams.get(str(n), 0) + self.k) / (context_count + (self.k * len(self.get_vocab())))
-
     def prob(self, context, char):
         """
         P(Wn|Wn-2Wn-1) = lP(Wn) + lP(Wn|Wn-1) + lP(Wn|Wn-2Wn-1)
@@ -185,7 +173,7 @@ class NgramModelWithInterpolation(NgramModel):
         for c in range(len(context) + 1):
             weight = self.weights[c]
 
-            p = self.prob_for_ngram(context[c:], char)
+            p = super().prob(context[c:], char)
 
             total_prob += weight * p
         return total_prob
@@ -193,18 +181,11 @@ class NgramModelWithInterpolation(NgramModel):
 
 class LanguageModel(NgramModelWithInterpolation):
 
-    def __init__(self, c, k, lang):
+    def __init__(self, c, k):
         super().__init__(c, k)
-        self.language = lang
-
-    def train_language_model(self, path):
-        with open(path, encoding='utf-8', errors='ignore') as f:
-            for line in f:
-                self.update(line.strip())
-        return
 
     def prob_of_text(self, text):
-        total_prob = 1
+        total_prob = 0
         grams = ngrams(self.c, text)
 
         for gram in grams:
@@ -213,67 +194,9 @@ class LanguageModel(NgramModelWithInterpolation):
             if p == 0:
                 return 0
 
-            total_prob *= p
+            total_prob += math.log2(p)
 
-        return total_prob
-
-
-def train_language_models(training_paths, ngram, k=1):
-    models = []
-
-    for i, path in enumerate(training_paths):
-        models.append(LanguageModel(ngram, k, COUNTRY_CODES[i]))
-        models[i].train_language_model(path)
-
-    return models
-
-
-def create_language_models():
-    training_paths = ["train/" + code + ".txt" for code in COUNTRY_CODES]
-    validation_paths = ["val/" + code + ".txt" for code in COUNTRY_CODES]
-
-    best_ngram = -1
-    best_correct_percentage = -1
-
-    for x in range(7):
-        num_correct = 0
-        num_total = 0
-        models = train_language_models(training_paths, x)
-
-        for i, path in enumerate(validation_paths):
-            language = COUNTRY_CODES[i]
-
-            with open(validation_paths[i], encoding='utf-8', errors='ignore') as f:
-                for line in f:
-                    print("CITY NAME: " + line)
-                    max_prob = -1
-                    curr_model = None
-                    for j, model in enumerate(models):
-                        p = model.prob_of_text(line)
-                        print(COUNTRY_CODES[j] + " assigned " + str(p) + " to the city")
-                        if p > max_prob or max_prob == -1:
-                            max_prob = p
-                            curr_model = COUNTRY_CODES[j]
-
-                    num_total += 1
-                    print("Best model was " + curr_model)
-                    print("Actual model was ", language)
-                    if curr_model == language:
-                        num_correct += 1
-
-                    print("---")
-
-            print(num_correct, num_total, num_correct / num_total)
-
-        if best_ngram == -1 or num_correct / num_total > best_correct_percentage:
-            best_ngram = x
-            best_correct_percentage = num_correct / num_total
-
-        print("Finished with " + str(x) + " ngram")
-    print(best_ngram, best_correct_percentage)
-
-
-create_language_models()
+        return 2 ** total_prob
 
 
 ################################################################################
@@ -288,38 +211,116 @@ create_language_models()
 # that you can easily run any test or experiment at any time.
 
 
-# def assert_equals(v1, v2, message):
-#     print("Asserting " + str(v1) + " is equal to " + str(v2))
-#     assert str(v1) == str(v2), message
+def assert_equals(v1, v2, message):
+    print("Asserting " + str(v1) + " is equal to " + str(v2))
+    assert str(v1) == str(v2), message
 
-# m = create_ngram_model(NgramModel, 'shakespeare_input.txt', 4)
-# print(m.random_text(500))
 
-# print("--------")
+#######
+# SHAKESPEARE TESTING
+#######
+
+# m2 = create_ngram_model(NgramModel, 'shakespeare_input.txt', 2)
+# print(m2.random_text(250))
+#
+# print(m2.random_text(20))
+#
+# print("---")
+#
+# m4 = create_ngram_model(NgramModel, 'shakespeare_input.txt', 4)
+# print(m4.random_text(250))
+#
+# print(m4.random_text(20))
+#
+# print("---")
+#
+# m6 = create_ngram_model(NgramModel, 'shakespeare_input.txt', 6)
+# print(m6.random_text(250))
+#
+# print(m6.random_text(20))
+#
+# print("---")
+#
+# m10 = create_ngram_model(NgramModel, 'shakespeare_input.txt', 10)
+# print(m10.random_text(250))
+#
+# print(m10.random_text(20))
+
+#####
+#
+# Perplexity & Smoothing
+#
+#####
 #
 # m = NgramModel(1, 0)
 # m.update('abab')
-# assert_equals("['a', 'b']", m.get_vocab(), 'vocab is equal')
 # m.update('abcd')
-# assert_equals("['a', 'b', 'c', 'd']", m.get_vocab(), 'vocab is equal')
-# assert_equals("0.0", m.prob('a', 'a'), 'probability is 0')
+# print(m.perplexity('abcd'))
+# print(m.perplexity('abca'))
+# print(m.perplexity('abcda'))
+#
+# m4_sonnet = create_ngram_model(NgramModel, 'nytimes_article.txt', 6, 0.001)
+#
+# print("----")
+# print(m4_sonnet.perplexity("From fairest creatures we desire increase"))
+# print("----")
+# famous_quotes = ["Life's but a walking shadow, a poor player that struts and frets his hour upon the stage, "
+#                  "and then is heard no more",
+#                  "Give every man thy ear, but few thy voice.",
+#                  "Our doubts are traitors and make us lose the good we oft might win by fearing to attempt.",
+#                  "To be, or not to be",
+#                  "The greatest glory in living lies not in never falling, but in rising every time we fall",
+#                  "The way to get started is to quit talking and begin doing",
+#                  "Your time is limited, so don't waste it living someone else's life. Don't be trapped by dogma – "
+#                  "which is living with the results of other people's thinking",
+#                  "If you look at what you have in life, you'll always have more. If you look at what you don't have "
+#                  "in life, you'll never have enough"]
+
+# avg1 = 0
+# avg2 = 0
+#
+# for i, quote in enumerate(famous_quotes):
+#     perp = m4_sonnet.perplexity(quote)
+#
+#     if i >= 4:
+#         avg2 += perp
+#     else:
+#         avg1 += perp
+#     print(perp)
+#
+# print(avg1 / 4, avg2 / 4)
+
+########
+#
+# Ngram model testing
+#
+########
+
+# print("--------")
+#
+# m1 = NgramModel(1, 0)
+# m1.update('abab')
+# assert_equals("['a', 'b']", m1.get_vocab(), 'vocab is equal')
+# m1.update('abcd')
+# assert_equals("['a', 'b', 'c', 'd']", m1.get_vocab(), 'vocab is equal')
+# assert_equals("0.0", m1.prob('a', 'a'), 'probability is 0')
 #
 # #
-# assert_equals("1.0", m.prob('a', 'b'), "probability is 1.0")
-# assert_equals("0.0", m.prob('~', 'c'), "probability is 0.0")
-# assert_equals("0.5", m.prob('b', 'c'), "probability is 0.5")
+# assert_equals("1.0", m1.prob('a', 'b'), "probability is 1.0")
+# assert_equals("0.0", m1.prob('~', 'c'), "probability is 0.0")
+# assert_equals("0.5", m1.prob('b', 'c'), "probability is 0.5")
 #
 # random.seed(1)
 # assert_equals("['a', 'd', 'd', 'b', 'b', 'b', 'c', 'd', 'a', 'a', 'd', 'b', 'd', 'a', 'b', 'c', 'a', 'd', 'd', 'a', "
-#               "'a', 'c', 'd', 'b', 'a']", [m.random_char('') for i in range(25)], 'first 25 random characters same')
-# assert_equals("1.5157165665103982", m.perplexity('abcda'), 'perplexity same')
-
-# m = NgramModelWithInterpolation(1, 0)
-# m.update('abab')
+#               "'a', 'c', 'd', 'b', 'a']", [m1.random_char('') for i in range(25)], 'first 25 random characters same')
+# assert_equals("1.5157165665103982", m1.perplexity('abcda'), 'perplexity same')
 #
-# print(m.prob('a', 'a'))
-# print(m.prob('a', 'b'))
+# m1 = NgramModelWithInterpolation(1, 0)
+# m1.update('abab')
 #
+# print(m1.prob('a', 'a'))
+# print(m1.prob('a', 'b'))
+# #
 # t = NgramModelWithInterpolation(2, 1)
 # t.update('abab')
 # t.update('abcd')
@@ -328,3 +329,76 @@ create_language_models()
 # print(t.prob('ba', 'b'))
 # print(t.prob('~c', 'd'))
 # print(t.prob('bc', 'd'))
+#
+# print("----")
+# t.update_weights([0.1, 0.8, 0.1])
+#
+# print(t.prob('~a', 'b'))
+# print(t.prob('ba', 'b'))
+# print(t.prob('~c', 'd'))
+# print(t.prob('bc', 'd'))
+#
+
+
+#############
+#
+# LANGUAGE TRAINING
+#
+############
+
+#
+# def train_language_models(training_paths, ngram, k=1):
+#     models = []
+#
+#     for path in training_paths:
+#         models.append(create_ngram_model_lines(LanguageModel, path, ngram, k))
+#
+#     return models
+#
+#
+# def create_language_models():
+#     training_paths = ["train/" + code + ".txt" for code in COUNTRY_CODES]
+#     validation_paths = ["val/" + code + ".txt" for code in COUNTRY_CODES]
+#
+#     best_ngram = -1
+#     best_correct_percentage = -1
+#
+#     for x in range(7):
+#         num_correct = 0
+#         num_total = 0
+#         models = train_language_models(training_paths, x)
+#
+#         for i, path in enumerate(validation_paths):
+#             language = COUNTRY_CODES[i]
+#
+#             with open(validation_paths[i], encoding='utf-8', errors='ignore') as f:
+#                 for line in f:
+#                     # print("CITY NAME: " + line)
+#                     max_prob = -1
+#                     curr_model = None
+#                     for j, model in enumerate(models):
+#                         p = model.prob_of_text(line)
+#                         # print(COUNTRY_CODES[j] + " assigned " + str(p) + " to the city")
+#                         if p > max_prob or max_prob == -1:
+#                             max_prob = p
+#                             curr_model = COUNTRY_CODES[j]
+#
+#                     num_total += 1
+#                     # print("Best model was " + curr_model)
+#                     # print("Actual model was ", language)
+#                     if curr_model == language:
+#                         num_correct += 1
+#
+#             print(num_correct, num_total, num_correct / num_total)
+#
+#         if best_ngram == -1 or num_correct / num_total > best_correct_percentage:
+#             best_ngram = x
+#             best_correct_percentage = num_correct / num_total
+#
+#         print("Finished with " + str(x) + " ngram")
+#     print(
+#         "The best ngram model was the model with " + str(best_ngram) + " grams. It had a correct percentage of " + str(
+#             best_correct_percentage))
+#
+#
+# create_language_models()
