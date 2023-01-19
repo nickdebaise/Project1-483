@@ -8,7 +8,6 @@ import random
 # Utility Functions
 ################################################################################
 
-
 COUNTRY_CODES = ['af', 'cn', 'de', 'fi', 'fr', 'in', 'ir', 'pk', 'za']
 
 
@@ -192,6 +191,91 @@ class NgramModelWithInterpolation(NgramModel):
         return total_prob
 
 
+class LanguageModel(NgramModelWithInterpolation):
+
+    def __init__(self, c, k, lang):
+        super().__init__(c, k)
+        self.language = lang
+
+    def train_language_model(self, path):
+        with open(path, encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                self.update(line.strip())
+        return
+
+    def prob_of_text(self, text):
+        total_prob = 1
+        grams = ngrams(self.c, text)
+
+        for gram in grams:
+            p = self.prob(gram[0], gram[1])
+
+            if p == 0:
+                return 0
+
+            total_prob *= p
+
+        return total_prob
+
+
+def train_language_models(training_paths, ngram, k=1):
+    models = []
+
+    for i, path in enumerate(training_paths):
+        models.append(LanguageModel(ngram, k, COUNTRY_CODES[i]))
+        models[i].train_language_model(path)
+
+    return models
+
+
+def create_language_models():
+    training_paths = ["train/" + code + ".txt" for code in COUNTRY_CODES]
+    validation_paths = ["val/" + code + ".txt" for code in COUNTRY_CODES]
+
+    best_ngram = -1
+    best_correct_percentage = -1
+
+    for x in range(7):
+        num_correct = 0
+        num_total = 0
+        models = train_language_models(training_paths, x)
+
+        for i, path in enumerate(validation_paths):
+            language = COUNTRY_CODES[i]
+
+            with open(validation_paths[i], encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    print("CITY NAME: " + line)
+                    max_prob = -1
+                    curr_model = None
+                    for j, model in enumerate(models):
+                        p = model.prob_of_text(line)
+                        print(COUNTRY_CODES[j] + " assigned " + str(p) + " to the city")
+                        if p > max_prob or max_prob == -1:
+                            max_prob = p
+                            curr_model = COUNTRY_CODES[j]
+
+                    num_total += 1
+                    print("Best model was " + curr_model)
+                    print("Actual model was ", language)
+                    if curr_model == language:
+                        num_correct += 1
+
+                    print("---")
+
+            print(num_correct, num_total, num_correct / num_total)
+
+        if best_ngram == -1 or num_correct / num_total > best_correct_percentage:
+            best_ngram = x
+            best_correct_percentage = num_correct / num_total
+
+        print("Finished with " + str(x) + " ngram")
+    print(best_ngram, best_correct_percentage)
+
+
+create_language_models()
+
+
 ################################################################################
 # Your N-Gram Model Experimentations
 ################################################################################
@@ -204,14 +288,13 @@ class NgramModelWithInterpolation(NgramModel):
 # that you can easily run any test or experiment at any time.
 
 
-def assert_equals(v1, v2, message):
-    print("Asserting " + str(v1) + " is equal to " + str(v2))
-    assert str(v1) == str(v2), message
+# def assert_equals(v1, v2, message):
+#     print("Asserting " + str(v1) + " is equal to " + str(v2))
+#     assert str(v1) == str(v2), message
 
-#
 # m = create_ngram_model(NgramModel, 'shakespeare_input.txt', 4)
 # print(m.random_text(500))
-#
+
 # print("--------")
 #
 # m = NgramModel(1, 0)
@@ -245,14 +328,3 @@ def assert_equals(v1, v2, message):
 # print(t.prob('ba', 'b'))
 # print(t.prob('~c', 'd'))
 # print(t.prob('bc', 'd'))
-
-
-def train_language_modal(path):
-    m = create_ngram_model(NgramModelWithInterpolation, path, 2, 1)
-    return m
-
-AF = train_language_modal("train/af.txt")
-
-with open("val/af.txt", encoding='utf-8', errors='ignore') as f:
-    for line in f:
-        print(line)
